@@ -157,15 +157,15 @@ Total: 200ms
 
 ## Implementation Strategies
 
-### Strategy 1: Native Batch API (Best)
+### Strategy 1: Native Batch API (✅ CONFIRMED SUPPORTED)
 
-**If Polymarket CLOB supports batch endpoint:**
+**Polymarket CLOB batch endpoint:** `POST /orders` (up to 15 orders)
 
 ```rust
-// POST /orders/batch
+// POST /orders (batch)
 pub async fn create_batch_orders(&self, orders: &[CreateOrderParams]) -> Result<Vec<OrderResponse>> {
     let response = self.client
-        .post(&format!("{}/orders/batch", self.base_url))
+        .post(&format!("{}/orders", self.base_url))
         .json(&orders)
         .send()
         .await?;
@@ -175,13 +175,15 @@ pub async fn create_batch_orders(&self, orders: &[CreateOrderParams]) -> Result<
 ```
 
 **Pros:**
-- ✅ True atomic execution
-- ✅ Single HTTP round-trip
-- ✅ Server-side guarantee both orders execute together
+- ✅ Single HTTP round-trip (200ms vs 400ms)
 - ✅ 50% latency reduction
+- ✅ Up to 15 orders per batch
+- ✅ Native API support confirmed
 
 **Cons:**
-- ⚠️ Requires API support (need to verify)
+- ⚠️ **NOT truly atomic** - individual orders can fail while others succeed
+- ⚠️ **Requires rollback strategy** for partial fills
+- ⚠️ Must handle one-sided positions if only 1 order succeeds
 
 ### Strategy 2: HTTP/2 Multiplexing (Fallback)
 
@@ -243,10 +245,13 @@ pub async fn create_orders_optimistic(&self, orders: &[CreateOrderParams]) -> Re
 
 | Strategy | Latency | Atomicity | Requirements |
 |----------|---------|-----------|--------------|
-| **Native Batch** | 200ms | ✅ Guaranteed | Batch API support |
-| **HTTP/2 Multiplex** | ~200ms | ⚠️ Best effort | HTTP/2 support |
+| **Native Batch** | 200ms | ⚠️ Manual rollback | Polymarket API ✅ |
+| **HTTP/2 Multiplex** | ~200ms | ⚠️ Manual rollback | HTTP/2 support |
 | **Optimistic Parallel** | ~200-250ms | ❌ Manual rollback | None |
 | **Sequential** | 400ms | ❌ One-sided risk | None |
+
+**Reality Check:** Polymarket batch API provides latency benefits but NOT atomicity.
+All strategies require rollback logic for arbitrage safety!
 
 ---
 
@@ -451,3 +456,137 @@ pub async fn execute_arbitrage(&self, opp: &ArbitrageOpportunity) -> Result<()> 
   - Verify atomicity
 
 **This is THE most important optimization. Do it first!** 🚨
+
+---
+
+## Polymarket Batch API Specifications (VERIFIED)
+
+**Documentation:** https://docs.polymarket.com/developers/CLOB/orders/create-order-batch
+
+### Endpoint
+
+```
+POST /<clob-endpoint>/orders
+```
+
+### Request Format
+
+```json
+[
+  {
+    "order": {
+      "salt": "123456789",
+      "maker": "0x...",
+      "signer": "0x...",
+      "taker": "0x...",
+      "tokenId": "123",
+      "makerAmount": "1000000",
+      "takerAmount": "700000",
+      "expiration": "1234567890",
+      "nonce": "1",
+      "feeRateBps": "100",
+      "side": "0",
+      "signatureType": "0",
+      "signature": "0x..."
+    },
+    "orderType": "GTC",
+    "owner": "0x..."
+  },
+  {
+    "order": { /* second order */ },
+    "orderType": "GTC",
+    "owner": "0x..."
+  }
+]
+```
+
+### Response Format
+
+```json
+{
+  "success": true,
+  "errorMsg": "",
+  "orderId": "order123",
+  "orderHashes": ["0xabc...", "0xdef..."],
+  "status": "matched" | "live" | "delayed" | "unmatched"
+}
+```
+
+### Key Specifications
+
+| Feature | Value |
+|---------|-------|
+| **Max orders per batch** | 15 |
+| **Atomicity** | ❌ Not guaranteed |
+| **Latency benefit** | ✅ Single HTTP request |
+| **Order types** | FOK, FAK, GTC, GTD |
+| **Authentication** | L2 Header (API key) |
+| **Rate limits** | Not documented |
+
+### Order Types
+
+- **GTC (Good-Til-Cancelled):** Limit order, stays until filled/cancelled
+- **GTD (Good-Til-Date):** Expires at UTC timestamp (min 1-minute security threshold)
+- **FOK (Fill-Or-Kill):** Market order, full execution or cancel
+- **FAK (Fill-And-Kill):** Market order, partial fills OK, remainder cancelled
+
+### Error Handling
+
+**Common errors:**
+- `INVALID_ORDER_MIN_TICK_SIZE`: Price doesn't meet tick size requirements
+- `INVALID_ORDER_NOT_ENOUGH_BALANCE`: Insufficient balance/allowance
+- `INVALID_ORDER_DUPLICATED`: Same order already placed
+- `INVALID_ORDER_EXPIRATION`: Expiration time before now
+- `FOK_ORDER_NOT_FILLED_ERROR`: FOK order can't be fully filled
+- `ORDER_DELAYED`: Order matching delayed (success=false, requires retry)
+- `MARKET_NOT_READY`: Market not accepting orders yet
+
+### Critical Implementation Notes
+
+1. **Individual orders can fail** - Must check each order's result
+2. **Rollback required** - If BUY succeeds but SELL fails, must cancel BUY
+3. **Order matching delays** - Some orders may be delayed, not immediately executed
+4. **No partial order execution** - Each order is all-or-nothing, but batch is not
+5. **15 order limit** - Can submit up to 15 orders in one batch (enough for arbitrage)
+
+### Example: Arbitrage Batch Order
+
+```rust
+// Arbitrage: BUY at ask, SELL at bid
+let batch = vec![
+    PostOrder {
+        order: create_signed_order(OrderSide::BUY, ask_price, size),
+        order_type: OrderType::GTC,
+        owner: api_key.clone(),
+    },
+    PostOrder {
+        order: create_signed_order(OrderSide::SELL, bid_price, size),
+        order_type: OrderType::GTC,
+        owner: api_key.clone(),
+    },
+];
+
+let response = client.post_batch_orders(&batch).await?;
+
+// ⚠️ CRITICAL: Check both orders succeeded
+match (response.order_hashes.get(0), response.order_hashes.get(1)) {
+    (Some(buy_hash), Some(sell_hash)) => {
+        // Both succeeded ✓
+        tracing::info!("Arbitrage executed: {} {}", buy_hash, sell_hash);
+    }
+    (Some(buy_hash), None) => {
+        // Only BUY succeeded - DANGER!
+        tracing::error!("⚠️ One-sided fill! Cancelling BUY order...");
+        client.cancel_order(buy_hash).await?;
+    }
+    (None, Some(sell_hash)) => {
+        // Only SELL succeeded - DANGER!
+        tracing::error!("⚠️ One-sided fill! Cancelling SELL order...");
+        client.cancel_order(sell_hash).await?;
+    }
+    (None, None) => {
+        // Both failed - safe
+        tracing::warn!("Batch order failed: {}", response.errorMsg);
+    }
+}
+```
