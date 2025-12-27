@@ -3,13 +3,15 @@
 //! Defines all order-related data structures for trading.
 
 use serde::{Deserialize, Serialize};
-use super::{MarketId, TokenId};
+use super::TokenId;
 
 /// Order side (buy or sell)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OrderSide {
+    /// Buy order
     BUY,
+    /// Sell order
     SELL,
 }
 

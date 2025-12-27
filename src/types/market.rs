@@ -28,7 +28,9 @@ impl fmt::Display for TokenId {
 /// Market outcome (YES or NO in binary markets)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
+    /// YES outcome
     YES,
+    /// NO outcome
     NO,
 }
 
@@ -36,8 +38,11 @@ pub enum Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MarketStatus {
+    /// Market is active and trading
     Active,
+    /// Market is closed, no new orders
     Closed,
+    /// Market is resolved with final outcome
     Resolved,
 }
 

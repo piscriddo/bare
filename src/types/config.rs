@@ -141,11 +141,17 @@ pub struct FeatureConfig {
 /// Complete bot configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BotConfig {
+    /// Wallet configuration
     pub wallet: WalletConfig,
+    /// Trading parameters
     pub trading: TradingConfig,
+    /// Risk management settings
     pub risk: RiskConfig,
+    /// Polymarket API settings
     pub polymarket: PolymarketConfig,
+    /// Logging configuration
     pub logging: LoggingConfig,
+    /// Feature flags
     pub features: FeatureConfig,
 }
 
