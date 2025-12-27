@@ -22,7 +22,7 @@ use std::ops::{Add, Sub, Mul, Div};
 /// let price = FixedPrice::from_f64(0.75);
 /// assert_eq!(price.to_f64(), 0.75);
 ///
-/// let doubled = price * FixedPrice::from_f64(2.0);
+/// let doubled = price.mul_price(FixedPrice::from_f64(2.0));
 /// assert_eq!(doubled.to_f64(), 1.5);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
