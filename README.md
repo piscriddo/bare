@@ -2,9 +2,9 @@
 
 High-frequency trading bot for Polymarket prediction markets built in Rust with SIMD optimization and Tier 1 HFT optimizations.
 
-## Status: Phase 4 - CLOB Client + Tier 1 Optimizations ⚡ COMPLETE
+## Status: Phase 5 - WebSocket Streaming + Complete Integration ⚡ COMPLETE
 
-**Latest:** Phase 4 | **Tests:** 62/62 passing | **Performance:** 151ms total (49ms under target!)
+**Latest:** Phase 5 | **Tests:** 70/70 passing | **Performance:** ~151ms end-to-end
 
 ### Phase Completion Status
 
@@ -13,8 +13,8 @@ High-frequency trading bot for Polymarket prediction markets built in Rust with 
 | **Phase 1** | ✅ Complete | Foundation | 12/12 | v0.1.0-phase1 |
 | **Phase 2** | ✅ Complete | 47ns detection (213x faster) | 23/23 | v0.2.0-phase2 |
 | **Phase 3** | ✅ Complete | 1-5ns circuit breaker | 45/45 | v0.3.0-phase3 |
-| **Phase 4** | ✅ Complete | 151ms execution (49ms under!) | 62/62 | *pending* |
-| **Phase 5** | ⏳ Next | WebSocket streaming | - | - |
+| **Phase 4** | ✅ Complete | 151ms execution (49ms under!) | 62/62 | v0.4.0-phase4 |
+| **Phase 5** | ✅ Complete | ~151ms end-to-end pipeline | 70/70 | v0.5.0-phase5 |
 
 ### Performance Achievements
 
@@ -36,8 +36,16 @@ High-frequency trading bot for Polymarket prediction markets built in Rust with 
 - **Pre-computed EIP-712:** 10-20μs saved per signature
 - **Total execution:** ~151ms (49ms under 200ms target!)
 
-**Combined Performance:**
+**Phase 5 (WebSocket Streaming + Tier 2 Optimizations):**
+- **Zero-copy buffers:** Pre-allocated 64KB BytesMut (no allocations)
+- **Auto-reconnect:** Exponential backoff (1s → 60s max)
+- **Health monitoring:** Ping/pong (30s interval, 10s timeout)
+- **Real-time integration:** WebSocket → SIMD → Circuit Breaker → Executor
+- **Complete pipeline:** ~151ms end-to-end latency
+
+**Complete End-to-End Pipeline:**
 ```
+WS Stream:      ~20μs   (Phase 5: Zero-copy parsing)
 Detection:      47ns    (Phase 2: SIMD)
 Risk check:     1-5ns   (Phase 3: Atomic circuit breaker)
 Nonce lookup:   <1μs    (Phase 4: Optimistic)
@@ -51,9 +59,9 @@ TOTAL:          ~151ms  ⚡ 49ms faster than target!
 Based on analysis of 7 Polymarket trading bots, implementing best practices from the highest-ranked implementation (terauss: 95/100) with additional HFT optimizations.
 
 **See:**
+- [PHASE_5_COMPLETE.md](PHASE_5_COMPLETE.md) for Phase 5 completion report
 - [GIT_WORKFLOW.md](GIT_WORKFLOW.md) for phase tracking
 - [docs/BATCH_ORDERS_CRITICAL.md](docs/BATCH_ORDERS_CRITICAL.md) for batch order details
-- [docs/PHASE_4_PLAN.md](docs/PHASE_4_PLAN.md) for implementation plan
 
 ---
 
@@ -120,9 +128,10 @@ src/
 │   ├── nonce_manager.rs ✅ Optimistic nonce (<1μs)
 │   ├── eip712.rs    ✅ Pre-computed EIP-712 signatures
 │   └── executor.rs  ✅ Batch orders + rollback
-├── services/        ⏳ External integrations (Phase 5)
-│   ├── polymarket/  ⏳ WebSocket orderbook streaming
-│   └── websocket/   ⏳ Auto-reconnect manager
+├── services/        ✅ External integrations (Phase 5)
+│   └── websocket/   ✅ WebSocket manager + Polymarket client
+│       ├── manager.rs       ✅ Auto-reconnect + health monitoring
+│       └── polymarket_ws.rs ✅ Orderbook streaming
 └── utils/           ✅ Utilities
 ```
 
@@ -131,6 +140,12 @@ src/
 - **12 new tests:** All CLOB components tested
 - **Tier 1 optimizations:** All implemented and validated
 - **Safety:** Automatic rollback + circuit breaker integration
+
+**Phase 5 Highlights:**
+- **4 new files:** manager, polymarket_ws + 2 examples (957 lines)
+- **8 new tests:** WebSocket manager and message processing
+- **Tier 2 optimizations:** Zero-copy buffers, auto-reconnect
+- **Integration:** Complete end-to-end pipeline (Phases 2-5)
 
 **Legend:**
 - ✅ Complete
@@ -367,6 +382,22 @@ MIT
 
 ---
 
-**Status:** Phase 1 Complete ✅ | Next: SIMD Arbitrage Detector (Week 2)
+## Examples
 
-**Performance:** Targeting 15x speedup over TypeScript | Based on terauss (95/100)
+**Phase 5 Integration Examples:**
+
+```bash
+# WebSocket + SIMD detection (Phase 2 + 5)
+cargo run --example websocket_arbitrage
+
+# Complete end-to-end bot (Phases 2-5)
+cargo run --example full_trading_bot
+```
+
+See [examples/](examples/) directory for full source code.
+
+---
+
+**Status:** Phase 5 Complete ✅ | All core functionality implemented
+
+**Performance:** ~151ms end-to-end | 49ms faster than 200ms target | Based on terauss (95/100)
