@@ -4,12 +4,16 @@ High-frequency trading bot for Polymarket prediction markets built in Rust with 
 
 ## Status: Phase 1 - Foundation ✅ COMPLETE
 
+**Git Tag:** `v0.1.0-phase1` | **Commits:** 2 | **Tests:** 12/12 passing
+
 **Performance Targets:**
 - Detection latency: **< 10μs** (vs 100μs TypeScript)
 - Execution latency: **< 150ms** (vs 2.3s TypeScript)
 - **15x faster** than TypeScript implementations
 
 Based on analysis of 7 Polymarket trading bots, implementing best practices from the highest-ranked implementation (terauss: 95/100).
+
+**See:** [GIT_WORKFLOW.md](GIT_WORKFLOW.md) for phase tracking and git commands.
 
 ---
 
