@@ -21,8 +21,12 @@ pub enum OrderSide {
 pub enum OrderType {
     /// Good-til-cancelled limit order
     GTC,
-    /// Fill-or-kill
+    /// Good-til-date (expires at specific timestamp)
+    GTD,
+    /// Fill-or-kill (market order, full execution or cancel)
     FOK,
+    /// Fill-and-kill (market order, partial fills OK)
+    FAK,
     /// Immediate-or-cancel
     IOC,
 }
@@ -140,6 +144,128 @@ pub struct ThreeOrderStrategy {
 
     /// Stop loss order parameters
     pub stop_loss: CreateOrderParams,
+}
+
+// ============================================================================
+// Polymarket CLOB-specific types (Phase 4)
+// ============================================================================
+
+/// Signature type for EIP-712 orders
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignatureType {
+    /// EIP-712 signature (default)
+    #[serde(rename = "0")]
+    EIP712 = 0,
+    /// EIP-1271 signature (contract wallets)
+    #[serde(rename = "1")]
+    EIP1271 = 1,
+    /// Polymarket proxy signature
+    #[serde(rename = "2")]
+    PolyProxy = 2,
+}
+
+/// Signed order for Polymarket CLOB
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedOrder {
+    /// Random salt for uniqueness
+    pub salt: String,
+
+    /// Maker address (funder)
+    pub maker: String,
+
+    /// Signer address
+    pub signer: String,
+
+    /// Taker address (operator)
+    pub taker: String,
+
+    /// ERC1155 token ID
+    pub token_id: String,
+
+    /// Maximum amount maker is willing to spend (in wei)
+    pub maker_amount: String,
+
+    /// Minimum amount taker will pay (in wei)
+    pub taker_amount: String,
+
+    /// Unix expiration timestamp
+    pub expiration: String,
+
+    /// Maker's exchange nonce
+    pub nonce: String,
+
+    /// Fee rate in basis points
+    pub fee_rate_bps: String,
+
+    /// Order side (0 = BUY, 1 = SELL)
+    pub side: u8,
+
+    /// Signature type
+    pub signature_type: u8,
+
+    /// Hex-encoded signature
+    pub signature: String,
+}
+
+/// Post order wrapper for batch requests
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostOrder {
+    /// Signed order
+    pub order: SignedOrder,
+
+    /// Order type (GTC, GTD, FOK, FAK)
+    #[serde(rename = "orderType")]
+    pub order_type: String,
+
+    /// API key of order owner
+    pub owner: String,
+}
+
+/// Batch order response from Polymarket CLOB
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchOrderResponse {
+    /// Whether server-side processing succeeded
+    pub success: bool,
+
+    /// Error message if success = false
+    #[serde(default)]
+    pub error_msg: String,
+
+    /// Order ID (if single order)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order_id: Option<String>,
+
+    /// Order hashes for successful orders in batch
+    #[serde(default)]
+    pub order_hashes: Vec<String>,
+
+    /// Order status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+impl BatchOrderResponse {
+    /// Check if both orders in arbitrage pair succeeded
+    pub fn both_succeeded(&self) -> bool {
+        self.success && self.order_hashes.len() >= 2
+    }
+
+    /// Check if partial fill occurred (only one order succeeded)
+    pub fn is_partial_fill(&self) -> bool {
+        self.success && self.order_hashes.len() == 1
+    }
+
+    /// Get buy order hash (first order)
+    pub fn buy_hash(&self) -> Option<&String> {
+        self.order_hashes.get(0)
+    }
+
+    /// Get sell order hash (second order)
+    pub fn sell_hash(&self) -> Option<&String> {
+        self.order_hashes.get(1)
+    }
 }
 
 #[cfg(test)]

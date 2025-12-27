@@ -24,6 +24,7 @@ futures-util = "0.3"
 
 # Ethereum/Web3
 ethers = { version = "2.0", features = ["abigen", "ws"] }
+hex = "0.4"
 
 # Big numbers for precision
 rust_decimal = "1.33"

@@ -399,7 +399,7 @@ mod tests {
         let mut handles = vec![];
 
         // Spawn 10 threads that each record 5 losing trades
-        for i in 0..10 {
+        for _ in 0..10 {
             let cb_clone = Arc::clone(&cb);
             let handle = thread::spawn(move || {
                 for _ in 0..5 {
