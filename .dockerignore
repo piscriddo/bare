@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Build artifacts
+target/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Test data
+*.test
+
+# Benchmarks output
+*.svg
+*.html
