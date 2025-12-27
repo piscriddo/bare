@@ -105,7 +105,7 @@ impl ScalarArbitrageDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{OrderBookEntry, Outcome};
+    use crate::types::OrderBookEntry;
 
     fn create_test_order_book(bid_price: f64, ask_price: f64, size: f64) -> OrderBook {
         OrderBook {
