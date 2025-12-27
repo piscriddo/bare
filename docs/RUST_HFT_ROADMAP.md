@@ -684,16 +684,387 @@ docker run -e BOT__DRY_RUN=true polymarket-hft-bot
 
 ---
 
-## Next Steps
+## PHASE 7: Ultra-Optimizations (Weeks 9-12)
 
-1. **Implement SIMD detector** (Week 2)
-2. **Add circuit breaker** (Week 3)
-3. **Build CLOB client** (Week 4)
-4. **WebSocket integration** (Week 5)
-5. **Performance tuning** (Week 6)
-6. **Production hardening** (Week 7-8)
-7. **Dry-run testing** (Week 9)
-8. **Live deployment** (Week 10)
+### Goal: Beat terauss (95/100) Performance
+
+**Target Metrics:**
+- Detection: **< 5μs** (vs terauss 10μs) - 2x faster
+- Execution: **< 50ms** (vs terauss 150ms) - 3x faster
+- Memory: **< 5MB** (vs terauss 10MB) - 2x smaller
+
+### 7.1 Fixed-Point Math (Week 9)
+
+**Problem:** Floating-point operations are slow (10-50ns per operation)
+
+**Solution:** Use fixed-point integers
+
+```rust
+// src/utils/math/fixed_point.rs
+
+/// Fixed-point price with 6 decimal precision
+/// 0.750000 → 750000
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FixedPrice(u64);
+
+impl FixedPrice {
+    const SCALE: u64 = 1_000_000;
+
+    pub fn from_f64(value: f64) -> Self {
+        Self((value * Self::SCALE as f64) as u64)
+    }
+
+    pub fn to_f64(self) -> f64 {
+        self.0 as f64 / Self::SCALE as f64
+    }
+
+    /// Multiply two prices (result scaled correctly)
+    pub fn mul(self, other: Self) -> Self {
+        Self((self.0 * other.0) / Self::SCALE)
+    }
+
+    /// Calculate spread (bid - ask)
+    pub fn spread(bid: Self, ask: Self) -> Self {
+        Self(bid.0.saturating_sub(ask.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fixed_point_math() {
+        let price1 = FixedPrice::from_f64(0.75);
+        let price2 = FixedPrice::from_f64(0.70);
+        let spread = FixedPrice::spread(price1, price2);
+        assert_eq!(spread.to_f64(), 0.05);
+    }
+}
+```
+
+**Performance:** 1ns vs 10-50ns for floats = **10-50x faster**
+
+### 7.2 Zero-Copy Deserialization (Week 9)
+
+**Problem:** Serde allocates and copies data (~500ns per order book)
+
+**Solution:** Use `zerocopy` crate
+
+```rust
+// Cargo.toml
+zerocopy = "0.7"
+
+// src/types/market.rs
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
+
+#[derive(Debug, Clone, Copy, FromBytes, FromZeroes, AsBytes)]
+#[repr(C)]
+pub struct OrderBookEntryRaw {
+    price: u64,      // Fixed-point
+    size: u64,       // Fixed-point
+    timestamp: i64,
+}
+
+impl OrderBookEntryRaw {
+    /// Parse directly from network buffer (zero-copy)
+    pub fn from_bytes(bytes: &[u8]) -> Option<&Self> {
+        OrderBookEntryRaw::ref_from(bytes)
+    }
+}
+```
+
+**Performance:** 10ns vs 500ns = **50x faster**
+
+### 7.3 Memory Pool Allocation (Week 9)
+
+**Problem:** Heap allocation takes 50-100ns per order
+
+**Solution:** Pre-allocate pools
+
+```rust
+// src/utils/pool.rs
+
+use std::mem::MaybeUninit;
+
+pub struct OrderPool<T> {
+    pool: Vec<MaybeUninit<T>>,
+    free_list: Vec<usize>,
+}
+
+impl<T> OrderPool<T> {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            pool: (0..capacity).map(|_| MaybeUninit::uninit()).collect(),
+            free_list: (0..capacity).collect(),
+        }
+    }
+
+    pub fn alloc(&mut self, value: T) -> Option<&mut T> {
+        self.free_list.pop().map(|idx| {
+            self.pool[idx].write(value)
+        })
+    }
+
+    pub fn dealloc(&mut self, idx: usize) {
+        self.free_list.push(idx);
+    }
+}
+```
+
+**Performance:** 5ns vs 50-100ns = **10-20x faster**
+
+### 7.4 CPU Cache Optimization (Week 10)
+
+**Problem:** Cache misses cost 200ns each
+
+**Solution:** Align to cache lines
+
+```rust
+// Align to 64-byte cache line
+#[repr(align(64))]
+pub struct OrderBookEntry {
+    price: FixedPrice,
+    size: FixedPrice,
+    timestamp: i64,
+    _padding: [u8; 40],  // Pad to 64 bytes
+}
+
+// Pack hot data together
+#[repr(C)]
+pub struct HotPath {
+    bid_price: FixedPrice,
+    ask_price: FixedPrice,
+    spread: FixedPrice,
+    // All in same cache line (24 bytes)
+}
+```
+
+**Performance:** 4ns vs 200ns on cache hit = **50x faster when hot**
+
+### 7.5 SIMD Prefetching (Week 10)
+
+**Problem:** Memory latency dominates even with SIMD
+
+**Solution:** Prefetch next data
+
+```rust
+use std::arch::x86_64::_mm_prefetch;
+
+pub fn detect_simd_prefetch(
+    books: &[OrderBook; 4],
+    next_books: &[OrderBook; 4],  // Next batch
+) -> [Option<ArbitrageOpportunity>; 4] {
+    // Prefetch next batch while processing current
+    unsafe {
+        _mm_prefetch(
+            next_books.as_ptr() as *const i8,
+            _MM_HINT_T0  // Prefetch to L1 cache
+        );
+    }
+
+    // Process current batch (SIMD)
+    detect_simd(books)
+}
+```
+
+**Performance:** 50% latency reduction when pipelined
+
+### 7.6 io_uring for Networking (Week 10)
+
+**Problem:** Traditional sockets: 5-10μs latency
+
+**Solution:** Kernel bypass with io_uring
+
+```rust
+// Cargo.toml
+tokio-uring = "0.4"
+
+// src/services/websocket/io_uring.rs
+use tokio_uring::net::TcpStream;
+
+pub async fn recv_order_book_fast(stream: &TcpStream) -> Result<OrderBook> {
+    let buf = stream.read(1024).await?;
+
+    // Zero-copy parse
+    let raw = OrderBookRaw::from_bytes(&buf.0)?;
+
+    Ok(raw.into())
+}
+```
+
+**Performance:** 1-2μs vs 5-10μs = **3-5x faster**
+
+---
+
+## PHASE 8: Advanced Features (Weeks 11-12)
+
+### 8.1 Market Making Mode
+
+```rust
+// src/core/strategies/market_maker.rs
+
+pub struct MarketMaker {
+    bid_offset: FixedPrice,  // e.g., -0.001
+    ask_offset: FixedPrice,  // e.g., +0.001
+}
+
+impl MarketMaker {
+    /// Place both sides to earn rebates
+    pub async fn quote(&self, mid_price: FixedPrice) -> (Order, Order) {
+        let bid = Order {
+            price: mid_price - self.bid_offset,
+            side: OrderSide::BUY,
+            ..Default::default()
+        };
+
+        let ask = Order {
+            price: mid_price + self.ask_offset,
+            side: OrderSide::SELL,
+            ..Default::default()
+        };
+
+        (bid, ask)
+    }
+}
+```
+
+**Benefit:** Earn maker rebates (+0.02%) instead of paying taker fees (-0.05%) = 0.07% edge
+
+### 8.2 Statistical Arbitrage
+
+```rust
+// src/core/arbitrage/stat_arb.rs
+
+use ndarray::{Array1, Array2};
+
+pub struct StatArbDetector {
+    price_history: RingBuffer<FixedPrice>,
+    mean: f64,
+    std_dev: f64,
+}
+
+impl StatArbDetector {
+    /// Detect mean reversion opportunities
+    pub fn detect_mean_reversion(&mut self, current_price: FixedPrice) -> Option<Signal> {
+        let z_score = (current_price.to_f64() - self.mean) / self.std_dev;
+
+        if z_score > 2.0 {
+            Some(Signal::Sell)  // Price too high
+        } else if z_score < -2.0 {
+            Some(Signal::Buy)   // Price too low
+        } else {
+            None
+        }
+    }
+}
+```
+
+### 8.3 Multi-Exchange Routing
+
+```rust
+// src/services/multi_exchange/mod.rs
+
+pub enum Exchange {
+    Polymarket,
+    Kalshi,
+    PredictIt,
+}
+
+pub struct MultiExchangeRouter {
+    exchanges: HashMap<Exchange, Box<dyn ExchangeClient>>,
+}
+
+impl MultiExchangeRouter {
+    /// Find best price across all exchanges
+    pub async fn get_best_price(&self, market: &str) -> BestPrice {
+        let prices = join_all(
+            self.exchanges.values()
+                .map(|ex| ex.get_price(market))
+        ).await;
+
+        prices.into_iter()
+            .filter_map(Result::ok)
+            .min_by_key(|p| p.price)
+            .unwrap()
+    }
+}
+```
+
+---
+
+## PHASE 9: Production Deployment (Weeks 13-14)
+
+### 9.1 Colocation
+
+**Benefit:** 0.1ms latency vs 50ms from home = **500x faster**
+
+**Setup:**
+1. Rent server in same datacenter as Polymarket
+2. Deploy bot with minimal network hops
+3. Use dedicated network interface
+
+**Cost:** $500-2000/month
+
+**Requirements:**
+- Production-grade code (Phases 1-8 complete)
+- Monitoring and alerting
+- Automated failover
+
+### 9.2 Hardware Acceleration (Advanced)
+
+```rust
+// Optional: GPU for backtesting
+use cudarc::driver::CudaDevice;
+
+pub fn backtest_cuda(
+    historical_data: &[OrderBook],
+    strategy: &dyn Strategy,
+) -> BacktestResults {
+    let device = CudaDevice::new(0)?;
+
+    // Run millions of simulations on GPU
+    device.launch_kernel(backtest_kernel, ...)?;
+}
+```
+
+**Benefit:** 100x faster backtesting
+
+---
+
+## Performance Targets Timeline
+
+| Phase | Week | Detection | Execution | Notes |
+|-------|------|-----------|-----------|-------|
+| 1 | 1 | N/A | N/A | Foundation ✅ |
+| 2 | 2 | 10μs | N/A | Match terauss |
+| 3-6 | 3-8 | 10μs | 150ms | Full pipeline |
+| 7 | 9-12 | **5μs** | **50ms** | Ultra-optimized ⚡ |
+| 8 | 11-12 | 5μs | 50ms | Advanced features |
+| 9 | 13-14 | **<1μs** | **<10ms** | Colocated + HW |
+
+---
+
+## Next Immediate Steps
+
+### Week 2 (Phase 2): SIMD Arbitrage Detector
+
+1. **Day 1-2:** Implement scalar detector
+2. **Day 3-4:** Add SIMD optimization (wide crate)
+3. **Day 5:** Benchmarks (target: <10μs)
+4. **Day 6-7:** Integration tests
+
+### Week 3 (Phase 3): Risk Management
+
+1. Implement CircuitBreaker with atomics
+2. Position tracking
+3. Daily loss limits
+
+### Week 4 (Phase 4): API Integration
+
+1. CLOB HTTP client
+2. Order signing (ethers-rs)
+3. WebSocket manager
 
 ---
 
