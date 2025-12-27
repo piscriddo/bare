@@ -1,0 +1,67 @@
+[package]
+name = "polymarket_hft_bot"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "High-frequency trading bot for Polymarket with SIMD optimization"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-tungstenite = "0.21"
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# WebSocket
+tungstenite = "0.21"
+futures-util = "0.3"
+
+# Ethereum/Web3
+ethers = { version = "2.0", features = ["abigen", "ws"] }
+
+# Big numbers for precision
+rust_decimal = "1.33"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Configuration
+config = "0.13"
+dotenv = "0.15"
+
+# Time handling
+chrono = "0.4"
+
+# SIMD for high-performance arbitrage detection
+wide = "0.7"
+
+# Concurrent data structures
+crossbeam = "0.8"
+parking_lot = "0.12"
+
+# Metrics and monitoring
+prometheus = "0.13"
+
+[dev-dependencies]
+criterion = "0.5"
+mockito = "1.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.bench]
+inherits = "release"
