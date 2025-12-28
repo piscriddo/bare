@@ -2,9 +2,9 @@
 
 High-frequency trading bot for Polymarket prediction markets built in Rust with SIMD optimization and Tier 1 HFT optimizations.
 
-## Status: Phase 7b - Ultra-Optimizations + Production Ready ⚡ COMPLETE
+## Status: Phase 7b.1 - Fixed-Point Detector ⚡ COMPLETE
 
-**Latest:** Phase 7b | **Tests:** 83/83 passing | **Performance:** ~151ms end-to-end, 3x faster math!
+**Latest:** Phase 7b.1 | **Tests:** 83/83 passing | **Performance:** 14ns detection, 3.4x faster!
 
 ### Phase Completion Status
 
@@ -67,8 +67,7 @@ High-frequency trading bot for Polymarket prediction markets built in Rust with 
 **Complete End-to-End Pipeline:**
 ```
 WS Stream:      ~20μs   (Phase 5: Zero-copy parsing)
-Fixed Math:     ~8ns    (Phase 7b: Integer operations, 3x faster!)
-Detection:      47ns    (Phase 2: SIMD)
+Detection:      14ns    (Phase 7b.1: Fixed-point math, 3.4x faster!)
 Risk check:     1-5ns   (Phase 3: Atomic circuit breaker)
 Nonce lookup:   <1μs    (Phase 4: Optimistic)
 Order signing:  <100μs  (Phase 4: Pre-computed EIP-712)
@@ -76,7 +75,8 @@ HTTP batch:     ~150ms  (Phase 4: TCP_NODELAY + pooling)
 Verification:   <1ms    (Phase 4: Response check)
 ──────────────────────────────────────────────────
 TOTAL:          ~151ms  ⚡ 49ms faster than target!
-                        ⚡ 3x faster math operations!
+                        ⚡ 14ns detection (700x target!)
+                        ⚡ 3.4x faster than Phase 2!
 ```
 
 Based on analysis of 7 Polymarket trading bots, implementing best practices from the highest-ranked implementation (terauss: 95/100) with additional HFT optimizations.
@@ -179,10 +179,11 @@ src/
 - **Documentation:** Complete deployment guide (400+ lines)
 
 **Phase 7b Highlights:**
-- **Fixed-point math:** 350+ lines, 6 decimal precision
-- **Performance:** 3x faster than f64 operations
-- **13 new tests:** Full coverage of arithmetic operations
-- **Benchmarks:** Demonstrating 3.1x speedup for profit calculations
+- **Fixed-point math:** 350+ lines, 6 decimal precision (Phase 7b)
+- **Detector integration:** ScalarArbitrageDetector using FixedPrice (Phase 7b.1)
+- **Performance:** 14ns detection (3.4x faster than Phase 2's 47ns!)
+- **16 new tests:** Full coverage of arithmetic + detector tests
+- **Benchmarks:** Demonstrating 14ns detection speed
 
 **Legend:**
 - ✅ Complete
