@@ -5,11 +5,33 @@
 **Before You Start:**
 - 🚨 **You will likely LOSE money** while learning
 - 🚨 **$20 is too small** for meaningful profits (fees will eat most gains)
-- 🚨 **No stop-loss automation** yet (you need to monitor manually)
 - 🚨 **No position reconciliation** (restart = lost state)
 - 🚨 **Competition is fierce** (other bots are faster/smarter)
+- 🚨 **Markets are efficient** (arbitrage opportunities are RARE)
 
 **This is a LEARNING EXERCISE, not a money-making strategy!**
+
+---
+
+## What This Bot Does (Arbitrage)
+
+**Important Clarification:**
+
+This bot does **ARBITRAGE**, not directional trading:
+- ✅ Buys AND sells simultaneously
+- ✅ Profit locked in immediately
+- ✅ Zero market risk (no exposure to price movements)
+- ❌ Does NOT bet on price going up/down
+- ❌ Does NOT need stop loss (no market risk!)
+- ❌ Does NOT hold positions overnight
+
+**Think of it like:**
+- Finding someone selling apples for $1
+- Finding someone buying apples for $1.05
+- Buying and selling at the same time
+- **Profit: $0.05 GUARANTEED** (minus fees)
+
+**The catch:** These opportunities are extremely rare because markets are efficient!
 
 ---
 
@@ -42,6 +64,87 @@
 
 ---
 
+## Understanding Arbitrage (Important!)
+
+### What is Arbitrage?
+
+**Arbitrage = Simultaneous BUY + SELL = Zero Market Risk**
+
+```
+Example Arbitrage Trade:
+┌─────────────────────────────────────────┐
+│ BUY  $5.00 @ 0.750 (ask price)          │
+│ SELL $5.00 @ 0.760 (bid price)          │
+├─────────────────────────────────────────┤
+│ Profit: $0.05 (1% spread)               │
+│ Market Risk: ZERO (both legs locked in) │
+└─────────────────────────────────────────┘
+```
+
+**Key Point:** You're NOT betting on price going up or down. You're capturing the price difference between two sides of the market **right now**.
+
+### Arbitrage vs Directional Trading
+
+| Aspect | Arbitrage (Our Bot) | Directional Trading |
+|--------|---------------------|---------------------|
+| **Risk** | Zero market risk | Full market exposure |
+| **Positions** | BUY + SELL together | BUY only (or SELL only) |
+| **Profit** | Locked in immediately | Depends on future price |
+| **Stop Loss** | ❌ Not needed | ✅ Critical for risk |
+| **Take Profit** | ❌ Not needed | ✅ Exit strategy |
+| **Duration** | Milliseconds | Hours/days/weeks |
+
+### What Can Go Wrong? (Execution Risk)
+
+**The ONLY risk in arbitrage is execution failure:**
+
+**Risk 1: Partial Fill**
+```
+✅ BUY order filled  @ $0.75
+❌ SELL order rejected (price moved)
+───────────────────────────────────
+Problem: Stuck with long position
+Solution: Bot auto-cancels BUY order
+```
+
+**Risk 2: Failed Rollback**
+```
+✅ BUY order filled
+❌ SELL order rejected
+🔄 Trying to cancel BUY...
+❌ Cancel failed! (network issue)
+───────────────────────────────────
+Problem: Unwanted position exposure
+Solution: Circuit breaker trips + manual intervention
+```
+
+**This is what MAX_DAILY_LOSS protects against!**
+- NOT market going against you
+- BUT execution errors leaving you exposed
+
+### Why This Matters
+
+**Traditional Stop Loss Doesn't Make Sense:**
+```
+# ❌ Wrong thinking:
+"Set stop loss at 2% in case arbitrage goes bad"
+
+# ✅ Correct thinking:
+"Arbitrage can't go bad - profit is locked in!
+ Only risk is execution failure, not market moves"
+```
+
+**Our Risk Settings:**
+```bash
+MAX_DAILY_LOSS=10.0      # If execution errors lose $10, stop
+MAX_POSITION_SIZE=10.0   # Limit size of each arbitrage
+MAX_OPEN_POSITIONS=2     # Max 2 simultaneous attempts
+```
+
+These protect against execution errors, NOT market risk!
+
+---
+
 ## Configuration Steps
 
 ### Step 1: Get Your Wallet Info
@@ -66,16 +169,19 @@ BOT__WALLET__PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 BOT__WALLET__ADDRESS=0xYOUR_WALLET_ADDRESS_HERE
 BOT__WALLET__CHAIN_ID=137  # Polygon mainnet
 
-# Trading Configuration
+# Arbitrage Detection Configuration
 BOT__TRADING__DEFAULT_AMOUNT=5.0         # Start VERY small ($5 per trade)
-BOT__TRADING__PRICE_THRESHOLD=0.01       # 1% minimum profit (be realistic!)
-BOT__TRADING__TAKE_PROFIT_AMOUNT=0.02    # Take profit at 2%
-BOT__TRADING__STOP_LOSS_AMOUNT=0.02      # Stop loss at 2%
+BOT__TRADING__PRICE_THRESHOLD=0.03       # 3% minimum spread (to cover fees!)
+
+# NOTE: Stop loss and take profit don't apply to arbitrage!
+# Arbitrage = simultaneous BUY + SELL = profit locked in immediately
+# No market risk, no need for stop loss/take profit
 
 # Risk Management (CRITICAL!)
-BOT__RISK__MAX_DAILY_LOSS=10.0           # Stop after losing $10/day
-BOT__RISK__MAX_POSITION_SIZE=10.0        # Max $10 per position
-BOT__RISK__MAX_OPEN_POSITIONS=2          # Max 2 positions at once
+# These protect against EXECUTION RISK (not market risk):
+BOT__RISK__MAX_DAILY_LOSS=10.0           # Stop if execution errors lose $10/day
+BOT__RISK__MAX_POSITION_SIZE=10.0        # Max $10 per arbitrage trade
+BOT__RISK__MAX_OPEN_POSITIONS=2          # Max 2 concurrent arbitrage attempts
 
 # Polymarket API
 BOT__POLYMARKET__CLOB_API_URL=https://clob.polymarket.com
@@ -147,11 +253,27 @@ BOT__FEATURES__DRY_RUN=true
 cargo run --release
 
 # Watch for:
-# - How often arbitrage is detected
-# - Typical profit margins
-# - Market volatility
+# - How often arbitrage is detected (probably never!)
+# - Typical profit margins (need 3%+ to cover fees)
+# - Spread sizes and how fast they disappear
 # - Execution speed estimates
 ```
+
+**What to look for:**
+```
+🎯 ARBITRAGE OPPORTUNITY DETECTED!
+   Market: Trump 2024 Wins
+   Bid: 0.760 | Ask: 0.750    # Wait, bid > ask = arbitrage!
+   Spread: 1.0%               # But only 1%...
+   After fees: -0.5%          # Fees eat it all = NOT PROFITABLE
+
+🔴 Skipping (below threshold)
+```
+
+**Reality check:** You'll probably see ZERO opportunities because:
+- 1% spreads are common but fees are 1-2%
+- 3%+ spreads are rare (market is efficient)
+- When they exist, other bots grab them in milliseconds
 
 **Expected Reality:**
 - You'll probably see **ZERO arbitrage opportunities**
@@ -208,6 +330,24 @@ cargo run --release
 
 ## What to Expect (Reality Check)
 
+### Understanding the Risks
+
+**Remember: Arbitrage has NO market risk, ONLY execution risk!**
+
+**You won't lose money because:**
+- ❌ Market moved against you (not a factor in arbitrage)
+- ❌ Price crashed after you bought (both sides executed together)
+- ❌ Directional bet went wrong (not making directional bets)
+
+**You COULD lose money because:**
+- ✅ Partial fill + failed rollback (stuck with unwanted position)
+- ✅ Fees exceeded profit (thought 1% was enough, but fees = 2%)
+- ✅ Slippage on execution (price moved between detection and execution)
+- ✅ Gas fee spike (Polygon congestion)
+- ✅ Multiple failed attempts (trying 10x, all fail, gas fees add up)
+
+**Bottom line:** MAX_DAILY_LOSS protects against execution failures, not market moves!
+
 ### Likely Scenarios
 
 **Scenario 1: No Arbitrage Found (90% probability)**
@@ -256,27 +396,35 @@ cargo run --release
 
 ---
 
-**Scenario 3: Successful Trade (1% probability)**
+**Scenario 3: Successful Arbitrage (1% probability)**
 ```
 🎯 ARBITRAGE OPPORTUNITY DETECTED!
    Market: Bitcoin $100k by EOY
-   Profit: 2.5% margin
+   Spread: 4.0% (bid 0.78, ask 0.75)
    Size: $5.00
-📤 Placing orders...
-✅ BUY order filled: $5.00 @ 0.75
+📤 Placing simultaneous orders...
+✅ BUY order filled:  $5.00 @ 0.75
 ✅ SELL order filled: $5.00 @ 0.78
-💰 Profit: $0.15 (3% after fees)
+💰 Profit: $0.15 LOCKED IN (3% after fees)
 ```
+
+**What just happened:**
+1. Detected bid (0.78) > ask (0.75) = 4% spread
+2. Bought at ask: $5.00 @ 0.75
+3. Sold at bid: $5.00 @ 0.78
+4. **Profit locked in immediately** (not dependent on future price!)
+5. After fees (2%): Net $0.15 profit
 
 **Why you succeeded:**
 - Got lucky with timing
 - Other bots were down or slower
-- Market had temporary inefficiency
+- Market had temporary inefficiency (rare!)
 
 **Reality check:**
-- Fees ate most profit ($0.15 on $5 = 3%)
+- Profit is IMMEDIATE (not waiting for price to move)
+- But fees ate 2% ($0.10 on $5 trade)
 - Need to do this 100x to make meaningful money
-- One bad trade can wipe out 10 good trades
+- Failed rollbacks can wipe out multiple good trades
 
 ---
 
