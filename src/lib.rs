@@ -51,5 +51,6 @@ pub mod clob;
 pub mod services;
 pub mod config;
 pub mod utils;
+pub mod strategies;
 
 pub use types::*;
