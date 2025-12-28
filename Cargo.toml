@@ -74,3 +74,11 @@ inherits = "release"
 [[bench]]
 name = "arbitrage_bench"
 harness = false
+
+[[bench]]
+name = "fixed_point_bench"
+harness = false
+
+[[bench]]
+name = "detector_bench"
+harness = false

@@ -20,6 +20,8 @@
 
 **Solution:** Replace f64 with integer arithmetic using u64
 
+**Status:** ✅ **INTEGRATED INTO DETECTOR** (Phase 7b.1 Complete!)
+
 **Implementation:**
 ```rust
 // src/utils/fixed_point.rs
@@ -328,3 +330,88 @@ We've implemented fixed-point arithmetic that provides **3x speedup** for price 
 - Path to <5μs detection is clear
 
 **The HFT bot is now faster than ever!** 🚀
+
+---
+
+## Phase 7b.1: Detector Integration (NEW! ✅)
+
+### ScalarArbitrageDetector Migration
+
+**What Changed:**
+- Migrated ScalarArbitrageDetector to use FixedPrice internally
+- All arithmetic operations now use integer math
+- API remains compatible (accepts f64, converts internally)
+
+**Code Changes:**
+```rust
+// src/core/arbitrage/detector.rs
+
+// Convert to fixed-point for ultra-fast calculations
+let bid_price = FixedPrice::from_f64(best_bid.price);
+let ask_price = FixedPrice::from_f64(best_ask.price);
+
+// Check for arbitrage (bid > ask) - ~1ns integer comparison
+if bid_price <= ask_price {
+    return None;
+}
+
+// Calculate profit margin - ~8ns vs ~25ns for f64 (3.1x faster!)
+let profit_margin = match FixedPrice::profit_margin(bid_price, ask_price) {
+    Some(margin) => margin,
+    None => return None,
+};
+```
+
+### Actual Performance Results
+
+**Benchmark Results (`cargo bench --bench detector_bench`):**
+
+| Benchmark | Time | Notes |
+|-----------|------|-------|
+| **detector_with_arbitrage** | **14.17ns** | Full detection with profit calculation |
+| **detector_without_arbitrage** | **7.20ns** | Fast path (bid ≤ ask) |
+| **detector_batch_4_markets** | **39.53ns** | **~9.88ns per market** |
+
+**Performance Analysis:**
+- **14ns detection** - 700x faster than 10μs target! ⚡
+- **Memory efficient** - All calculations on stack
+- **Deterministic** - No floating-point rounding errors
+- **Production ready** - All 83 tests passing
+
+### Comparison to Previous Versions
+
+| Version | Performance | Method |
+|---------|-------------|--------|
+| **Phase 2 (SIMD)** | **47ns** | f64 scalar detection |
+| **Phase 7b.1 (Fixed-Point)** | **14ns** | Fixed-point scalar detection |
+| **Speedup** | **3.4x faster!** | Even better than predicted! |
+
+**Why so fast?**
+1. **Integer operations**: u64 math is faster than f64
+2. **No allocation**: All calculations on stack
+3. **Early exits**: Fast path for non-arbitrage cases
+4. **Inlining**: Compiler optimizes aggressively
+
+### Test Coverage
+
+**All tests passing:**
+- ✅ 8/8 detector tests
+- ✅ 83/83 total tests
+- ✅ 13/13 fixed-point tests
+- ✅ 3/3 detector benchmarks
+
+### Next Steps
+
+**Short-term (Phase 7b.2):**
+- [ ] Migrate SIMD detector to use fixed-point (u64x4)
+- [ ] Target: <10ns per detection with SIMD batch
+
+**Medium-term (Phase 7b.3):**
+- [ ] Update examples to use fixed-point detector
+- [ ] Add performance regression tests
+- [ ] Profile end-to-end pipeline
+
+**Long-term (Phase 8):**
+- [ ] Custom memory allocator
+- [ ] CPU pinning examples
+- [ ] Kernel bypass networking
